@@ -7,12 +7,13 @@ app = Flask(__name__)
 
 # --- CONFIGURATION ---
 META_VERIFY_TOKEN = "my_secret_bot_123"
+# Get tokens securely from Render Environment Variables
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
-GEMINI_API_KEY = "AIzaSyA1MjIvEE5AMxpqnfRyFWZI6-RV0sW83sk"
+GEMINI_API_KEY = os.environ.get("AIzaSyB0i5Y3YH_QkWMBP_UGltE9J10a3sYzg2I") 
 
 # --- SYSTEM PROMPT ---
 SYSTEM_PROMPT = """
-You are the 'Esskay Beauty Expert'.
+You are the 'Esskay Beauty Expert' & Sales Assistant.
 BUSINESS INFO:
 - Website: www.esskaybeauty.com
 - Phone: +91-8882-800-800
@@ -24,13 +25,12 @@ RULES:
 3. GENERAL: Keep answers short (under 50 words). Use emojis! 💅
 """
 
-# --- DEBUG MODEL LIST ---
-# We are trying the generic aliases which are often more stable
+# Optimized Model List
 MODELS_TO_TRY = [
-    "gemini-flash-latest",    # Points to the newest available flash
-    "gemini-pro-latest",      # Points to the newest available pro
-    "gemini-1.5-flash",       # Standard 1.5
-    "gemini-2.0-flash"        # Standard 2.0
+    "gemini-flash-latest",    
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",       
+    "gemini-pro"        
 ]
 
 @app.route("/webhook", methods=['GET', 'POST'])
@@ -61,9 +61,9 @@ def webhook():
     return "ok", 200
 
 def smart_gemini_call(text):
-    """Tries models. Returns the ACTUAL ERROR if all fail."""
-    last_error = ""
-    
+    if not GEMINI_API_KEY:
+        return "⚠️ Setup Error: API Key is missing in Render Environment."
+
     for model_name in MODELS_TO_TRY:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         headers = {"Content-Type": "application/json"}
@@ -76,21 +76,18 @@ def smart_gemini_call(text):
             if response.status_code == 200:
                 return response.json()['candidates'][0]['content']['parts'][0]['text']
             else:
-                # Capture the error to show the user
-                error_data = response.json().get('error', {})
-                last_error = f"Model {model_name} Error: {error_data.get('message', response.text)}"
-                print(f"⚠️ {last_error}")
+                print(f"⚠️ {model_name} Error: {response.text}")
                 continue
                 
         except Exception as e:
-            last_error = str(e)
+            print(f"Connection Error: {e}")
             continue
 
-    # DEBUG MODE: The bot will tell you EXACTLY what is wrong
-    return f"⚠️ SYSTEM ERROR: {last_error[:180]}... (Please check logs)"
+    return "⚠️ We are receiving high traffic! Please check www.esskaybeauty.com for prices."
 
 def send_to_facebook(recipient_id, text):
     if not FB_PAGE_ACCESS_TOKEN:
+        print("FB Token Missing")
         return
 
     if len(text) > 1900:
