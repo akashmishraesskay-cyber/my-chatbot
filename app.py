@@ -1,37 +1,65 @@
 import os
 import requests
-from flask import Flask
+from flask import Flask, request
 
 app = Flask(__name__)
+
+# --- CONFIGURATION ---
+META_VERIFY_TOKEN = "my_secret_bot_123"
+FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
 
 # YOUR API KEY
 GEMINI_API_KEY = "AIzaSyA1MjIvEE5AMxpqnfRyFWZI6-RV0sW83sk"
 
-@app.route("/", methods=['GET'])
-def home():
-    return "Bot is running! Go to /test to check your API key."
+@app.route("/webhook", methods=['GET', 'POST'])
+def webhook():
+    # 1. Verification
+    if request.method == 'GET':
+        if request.args.get("hub.verify_token") == META_VERIFY_TOKEN:
+            return request.args.get("hub.challenge")
+        return "Verification failed", 403
 
-@app.route("/test", methods=['GET'])
-def test_key():
-    """Asks Google which models are available for this specific key."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
+    # 2. Handling Messages
+    data = request.json
+    if data.get("object") == "page":
+        for entry in data.get("entry", []):
+            for event in entry.get("messaging", []):
+                if "message" in event and "text" in event["message"]:
+                    sender_id = event["sender"]["id"]
+                    user_text = event["message"]["text"]
+                    
+                    # Call Gemini using DIRECT method
+                    bot_reply = call_gemini_direct(user_text)
+                    
+                    # Send reply to Facebook
+                    send_to_facebook(sender_id, bot_reply)
+    return "ok", 200
+
+def call_gemini_direct(text):
+    """Talks to Gemini directly via URL."""
+    # !!! UPDATED TO YOUR AVAILABLE MODEL !!!
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{
+            "parts": [{"text": text}]
+        }]
+    }
     
     try:
-        response = requests.get(url)
+        response = requests.post(url, headers=headers, json=payload)
         if response.status_code == 200:
-            models = response.json().get('models', [])
-            # Create a clean list of allowed names
-            names = [m['name'] for m in models if 'generateContent' in m.get('supportedGenerationMethods', [])]
-            
-            if not names:
-                return "SUCCESS: Connected to Google, but NO models are available. (Your key might be restricted)."
-            
-            return f"SUCCESS! Your Valid Models: <br><br>" + "<br>".join(names)
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
         else:
-            return f"ERROR: Google rejected the key. <br>Status: {response.status_code} <br>Message: {response.text}"
-            
+            return f"Error from Google: {response.text} (Status: {response.status_code})"
     except Exception as e:
-        return f"CRITICAL ERROR: {str(e)}"
+        return f"Connection Failed: {str(e)}"
+
+def send_to_facebook(recipient_id, text):
+    url = f"https://graph.facebook.com/v21.0/me/messages?access_token={FB_PAGE_ACCESS_TOKEN}"
+    payload = {"recipient": {"id": recipient_id}, "message": {"text": text}}
+    requests.post(url, json=payload)
 
 if __name__ == "__main__":
     app.run(port=5000)
