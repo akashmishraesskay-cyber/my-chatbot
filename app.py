@@ -8,8 +8,8 @@ app = Flask(__name__)
 # --- CONFIGURATION ---
 # We read these securely from Render Settings
 META_VERIFY_TOKEN = "my_secret_bot_123"
-FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+FB_PAGE_ACCESS_TOKEN = os.environ.get("EAALv2CuWN1IBQH9fJdfAj0q1ujZCIEAAFqELdFJgl3CR5JaZCkJYZAm7LMZBlYn6Ls7Xa4B6Wo1SUtLtbq9mvflZBfDYFsafDLt0rPTZBDlWWUNBR0UAtZBWFm6CY4ZBQnhN1EM730D2IyCHX80RNF2Yr7QeItcOwHY018xZCtwZA40ODkJY4kO3INQZABz79TiO5ElYDPPcdTP")
+GEMINI_API_KEY = os.environ.get("AIzaSyAKrZ4UUVbUSYZTvQ8BW44MmV4ApHYJQBs")
 
 # --- YOUR BOT'S BRAIN (SALES EXPERT) ---
 SYSTEM_PROMPT = """
@@ -123,3 +123,4 @@ def send_to_facebook(recipient_id, text):
 
 if __name__ == "__main__":
     app.run(port=5000)
+
