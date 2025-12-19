@@ -1,63 +1,64 @@
 import os
 import requests
 from flask import Flask, request
-import google.generativeai as genai
 
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
-# 1. Verification Token for Facebook
 META_VERIFY_TOKEN = "my_secret_bot_123"
-
-# 2. Page Access Token (From Environment or Hardcoded)
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
 
-# 3. GOOGLE API KEY (HARDCODED FOR TESTING)
-# Paste your key inside the quotes below
-MY_GOOGLE_KEY = "AIzaSyA1MjIvEE5AMxpqnfRyFWZI6-RV0sW83sk"
-
-genai.configure(api_key=MY_GOOGLE_KEY)
-
-# Using the most standard model to be safe
-model = genai.GenerativeModel('gemini-1.5-flash')
+# PASTE YOUR API KEY HERE
+GEMINI_API_KEY = "AIzaSyA1MjIvEE5AMxpqnfRyFWZI6-RV0sW83sk"
 
 @app.route("/webhook", methods=['GET', 'POST'])
 def webhook():
-    # Verification
+    # 1. Verification
     if request.method == 'GET':
         if request.args.get("hub.verify_token") == META_VERIFY_TOKEN:
             return request.args.get("hub.challenge")
         return "Verification failed", 403
 
-    # Handling Messages
+    # 2. Handling Messages
     data = request.json
-    print("Received Data:", data) # distinct log to prove new code is running
-
-    if data.get("object") in ["page", "instagram"]:
+    if data.get("object") == "page":
         for entry in data.get("entry", []):
-            for messaging_event in entry.get("messaging", []):
-                # Ignore delivery confirmations, only want messages
-                if "message" in messaging_event and "text" in messaging_event["message"]:
-                    sender_id = messaging_event["sender"]["id"]
-                    user_text = messaging_event["message"]["text"]
+            for event in entry.get("messaging", []):
+                if "message" in event and "text" in event["message"]:
+                    sender_id = event["sender"]["id"]
+                    user_text = event["message"]["text"]
                     
-                    try:
-                        # Try to get a response
-                        response = model.generate_content(user_text)
-                        bot_reply = response.text
-                    except Exception as e:
-                        bot_reply = f"Error from Google: {str(e)}"
-                        print(f"GOOGLE ERROR: {e}")
-
-                    # Send back to Facebook
-                    send_message(sender_id, bot_reply)
+                    # Call Gemini using DIRECT method (No library)
+                    bot_reply = call_gemini_direct(user_text)
+                    
+                    # Send reply to Facebook
+                    send_to_facebook(sender_id, bot_reply)
     return "ok", 200
 
-def send_message(recipient_id, text):
+def call_gemini_direct(text):
+    """Talks to Gemini directly via URL, bypassing the Python library issues."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{
+            "parts": [{"text": text}]
+        }]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            # If Flash fails, try the older Pro model automatically
+            return f"Error: {response.text} (Status: {response.status_code})"
+    except Exception as e:
+        return f"Connection Failed: {str(e)}"
+
+def send_to_facebook(recipient_id, text):
     url = f"https://graph.facebook.com/v21.0/me/messages?access_token={FB_PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": recipient_id}, "message": {"text": text}}
-    x = requests.post(url, json=payload)
-    print("Sent to FB:", x.status_code, x.text)
+    requests.post(url, json=payload)
 
 if __name__ == "__main__":
     app.run(port=5000)
