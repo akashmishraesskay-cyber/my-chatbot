@@ -13,7 +13,7 @@ GENAI_API_KEY = os.environ.get("GENAI_API_KEY")
 
 # Setup Gemini
 genai.configure(api_key=GENAI_API_KEY)
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 @app.route("/webhook", methods=['GET', 'POST'])
 def webhook():
@@ -47,4 +47,5 @@ def send_message(recipient_id, text):
 if __name__ == "__main__":
 
     app.run(port=5000)
+
 
