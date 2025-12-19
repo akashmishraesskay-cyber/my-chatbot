@@ -5,122 +5,41 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# --- CONFIGURATION ---
-# We read these securely from Render Settings
+# --- DEBUG CONFIG ---
+# We check what keys exist
+print("--- DEBUG: LIST OF ENVIRONMENT KEYS ---")
+for key in os.environ.keys():
+    print(f"Key Found: '{key}'") # Quotes help spot spaces like 'Key '
+print("---------------------------------------")
+
 META_VERIFY_TOKEN = "my_secret_bot_123"
-FB_PAGE_ACCESS_TOKEN = os.environ.get("EAALv2CuWN1IBQH9fJdfAj0q1ujZCIEAAFqELdFJgl3CR5JaZCkJYZAm7LMZBlYn6Ls7Xa4B6Wo1SUtLtbq9mvflZBfDYFsafDLt0rPTZBDlWWUNBR0UAtZBWFm6CY4ZBQnhN1EM730D2IyCHX80RNF2Yr7QeItcOwHY018xZCtwZA40ODkJY4kO3INQZABz79TiO5ElYDPPcdTP")
-GEMINI_API_KEY = os.environ.get("AIzaSyAKrZ4UUVbUSYZTvQ8BW44MmV4ApHYJQBs")
-
-# --- YOUR BOT'S BRAIN (SALES EXPERT) ---
-SYSTEM_PROMPT = """
-You are the 'Esskay Beauty Expert' & Sales Assistant.
-Your goal is to be helpful, professional, and drive sales to the website.
-
-BUSINESS INFO:
-- Website: www.esskaybeauty.com
-- Phone: +91-8882-800-800
-- Location: Udyog Vihar Phase IV, Gurugram.
-
-RULES FOR ANSWERING:
-1. GREETINGS: If user says "Hi", "Hello", ONLY say: 
-   "Hello! Welcome to Esskay Beauty. ✨ I can help you with Skincare, Haircare, or Salon Tools. What are you looking for today?"
-
-2. DIRECT LINKS: If asked for a product (e.g., "Argan Wax", "Dryer"), you MUST provide this search link:
-   "https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
-   (Replace SEARCH_TERM with the product name).
-
-3. MRP/PRICE: Do not guess prices. Say: 
-   "You can check the exact MRP and today's offers here: [Insert Search Link]"
-
-4. SOLUTIONS:
-   - "Dry Skin" -> Recommend Naturica or Skinora.
-   - "Tan" -> Recommend Rica Wax or Casmara.
-   - "Smooth Hair" -> Recommend Mr. Barber.
-
-5. GENERAL: Keep answers short (under 50 words). Use emojis! 💅✨
-"""
-
-# --- ROBUST MODEL LIST ---
-# Tries the latest versions first, then falls back to specific ones
-MODELS_TO_TRY = [
-    "gemini-flash-latest",    # Best chance of working
-    "gemini-2.0-flash",       # Standard 2.0
-    "gemini-1.5-flash",       # Standard 1.5
-    "gemini-pro"              # Old reliable
-]
+FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 @app.route("/webhook", methods=['GET', 'POST'])
 def webhook():
-    # 1. Verification
     if request.method == 'GET':
         if request.args.get("hub.verify_token") == META_VERIFY_TOKEN:
             return request.args.get("hub.challenge")
         return "Verification failed", 403
 
-    # 2. Handling Messages
     data = request.json
     if data.get("object") == "page":
         for entry in data.get("entry", []):
             for event in entry.get("messaging", []):
-                if "message" in event and "text" in event["message"]:
+                if "message" in event:
                     sender_id = event["sender"]["id"]
-                    user_text = event["message"]["text"]
-                    
-                    print(f"Received from {sender_id}: {user_text}")
-
-                    # Combine Brain + User Message
-                    full_prompt = SYSTEM_PROMPT + "\n\nUser Question: " + user_text
-
-                    # Smart Call
-                    bot_reply = smart_gemini_call(full_prompt)
-                    
-                    # Send Reply
-                    send_to_facebook(sender_id, bot_reply)
+                    if not FB_PAGE_ACCESS_TOKEN:
+                        print("CRITICAL ERROR: Code tried to reply but FB_PAGE_ACCESS_TOKEN is None.")
+                    else:
+                        send_to_facebook(sender_id, "Test Reply - Token is working")
     return "ok", 200
 
-def smart_gemini_call(text):
-    """Tries multiple models. Switches automatically if one fails."""
-    
-    # Safety Check
-    if not GEMINI_API_KEY:
-        return "⚠️ Setup Error: API Key is missing in Render Settings."
-
-    for model_name in MODELS_TO_TRY:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-        headers = {"Content-Type": "application/json"}
-        payload = {"contents": [{"parts": [{"text": text}]}]}
-        
-        try:
-            # 1-second pause to prevent 'Speed Limit' blocks
-            time.sleep(1) 
-            response = requests.post(url, headers=headers, json=payload)
-            
-            if response.status_code == 200:
-                return response.json()['candidates'][0]['content']['parts'][0]['text']
-            else:
-                print(f"⚠️ Model {model_name} failed ({response.status_code}). Trying next...")
-                continue
-                
-        except Exception as e:
-            print(f"❌ Connection Error: {e}")
-            continue
-
-    # Fallback if Google is totally down
-    return "⚠️ We are receiving high traffic! Please check www.esskaybeauty.com for prices."
-
 def send_to_facebook(recipient_id, text):
-    if not FB_PAGE_ACCESS_TOKEN:
-        print("Error: FB Token Missing in Render")
-        return
-
-    # Truncate to avoid Facebook limits
-    if len(text) > 1900:
-        text = text[:1900] + "..."
-
     url = f"https://graph.facebook.com/v21.0/me/messages?access_token={FB_PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": recipient_id}, "message": {"text": text}}
-    requests.post(url, json=payload)
+    r = requests.post(url, json=payload)
+    print(f"FB Response: {r.text}")
 
 if __name__ == "__main__":
     app.run(port=5000)
-
