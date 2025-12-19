@@ -12,38 +12,25 @@ GEMINI_API_KEY = "AIzaSyA1MjIvEE5AMxpqnfRyFWZI6-RV0sW83sk"
 
 # --- SYSTEM PROMPT ---
 SYSTEM_PROMPT = """
-You are the 'Esskay Beauty Expert' & Sales Assistant.
-Your goal is to be helpful, professional, and drive sales to the website.
-
+You are the 'Esskay Beauty Expert'.
 BUSINESS INFO:
 - Website: www.esskaybeauty.com
 - Phone: +91-8882-800-800
 - Location: Udyog Vihar Phase IV, Gurugram.
 
-RULES FOR ANSWERING:
-1. GREETINGS: If user says "Hi", "Hello", ONLY say: 
-   "Hello! Welcome to Esskay Beauty. ✨ I can help you with Skincare, Haircare, or Salon Tools. What are you looking for today?"
-
-2. DIRECT LINKS: If asked for a product, provide this link:
-   "https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
-
-3. MRP/PRICE: Do not guess prices. Say: "Check the exact MRP and offers here: [Link]"
-
-4. SOLUTIONS:
-   - "Dry Skin" -> Recommend Naturica or Skinora.
-   - "Tan" -> Recommend Rica Wax or Casmara.
-   - "Smooth Hair" -> Recommend Mr. Barber.
-
-5. GENERAL: Keep answers short (under 50 words). Use emojis! 💅
+RULES:
+1. GREETINGS: Say "Hello! Welcome to Esskay Beauty. ✨ How can I help?"
+2. LINKS: Provide "https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
+3. GENERAL: Keep answers short (under 50 words). Use emojis! 💅
 """
 
-# --- OPTIMIZED MODEL LIST (Removed blocked models) ---
-# We prioritize "Lite" and "2.5" which usually have open quotas
+# --- DEBUG MODEL LIST ---
+# We are trying the generic aliases which are often more stable
 MODELS_TO_TRY = [
-    "gemini-2.0-flash-lite-preview-02-05", # Try the specific lite preview first
-    "gemini-2.5-flash",                     # Try the newest 2.5
-    "gemini-2.0-flash",                     # Standard backup
-    "gemini-2.0-flash-001"                  # Stable backup
+    "gemini-flash-latest",    # Points to the newest available flash
+    "gemini-pro-latest",      # Points to the newest available pro
+    "gemini-1.5-flash",       # Standard 1.5
+    "gemini-2.0-flash"        # Standard 2.0
 ]
 
 @app.route("/webhook", methods=['GET', 'POST'])
@@ -74,7 +61,8 @@ def webhook():
     return "ok", 200
 
 def smart_gemini_call(text):
-    """Tries multiple models. Logs errors if they fail."""
+    """Tries models. Returns the ACTUAL ERROR if all fail."""
+    last_error = ""
     
     for model_name in MODELS_TO_TRY:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
@@ -82,27 +70,27 @@ def smart_gemini_call(text):
         payload = {"contents": [{"parts": [{"text": text}]}]}
         
         try:
-            # Short pause to prevent rate limiting
             time.sleep(1) 
             response = requests.post(url, headers=headers, json=payload)
             
             if response.status_code == 200:
                 return response.json()['candidates'][0]['content']['parts'][0]['text']
             else:
-                # Log the error but keep going to the next model
-                print(f"⚠️ {model_name} failed ({response.status_code}). Trying next...")
+                # Capture the error to show the user
+                error_data = response.json().get('error', {})
+                last_error = f"Model {model_name} Error: {error_data.get('message', response.text)}"
+                print(f"⚠️ {last_error}")
                 continue
                 
         except Exception as e:
-            print(f"❌ Connection Error on {model_name}: {e}")
+            last_error = str(e)
             continue
 
-    # Fallback message if ALL fail
-    return "⚠️ We are receiving high traffic! Please check www.esskaybeauty.com for prices."
+    # DEBUG MODE: The bot will tell you EXACTLY what is wrong
+    return f"⚠️ SYSTEM ERROR: {last_error[:180]}... (Please check logs)"
 
 def send_to_facebook(recipient_id, text):
     if not FB_PAGE_ACCESS_TOKEN:
-        print("Error: Token missing")
         return
 
     if len(text) > 1900:
