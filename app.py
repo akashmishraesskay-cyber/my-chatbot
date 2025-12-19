@@ -10,44 +10,49 @@ META_VERIFY_TOKEN = "my_secret_bot_123"
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
 GEMINI_API_KEY = "AIzaSyA1MjIvEE5AMxpqnfRyFWZI6-RV0sW83sk"
 
-# --- YOUR BOT'S BRAIN (ADVANCED TRAINING) ---
+# --- YOUR BOT'S BRAIN (SALES PRO EDITION) ---
 SYSTEM_PROMPT = """
-You are the 'Esskay Beauty Expert' & Sales Assistant. 
-You are not just a bot; you are a beauty consultant. You help customers choose the right products and solve their hair/skin problems.
+You are the 'Esskay Beauty Expert' & Sales Assistant.
+Your goal is to be helpful, professional, and drive sales to the website.
 
 BUSINESS INFO:
 - Website: www.esskaybeauty.com
 - Phone: +91-8882-800-800
 - Location: Udyog Vihar Phase IV, Gurugram.
 
-OUR EXCLUSIVE BRANDS (Memorize These):
-- SKIN: Skinora (Professional skincare), Casmara (Algae masks), Rica (Italian Wax), Waxxo.
-- HAIR: Naturica (Natural hair care), Keratherapy, Macadamia.
-- TOOLS: Mr. Barber (Straighteners, Dryers, Scissors).
-- NAILS: Ola Candy (Polishes), Gel Extensions.
+BRANDS WE SELL:
+- Skin: Skinora (Professional), Casmara (Algae masks), Rica (Italian Wax), Waxxo.
+- Hair: Naturica (Natural), Keratherapy, Macadamia, GK Hair.
+- Tools: Mr. Barber (Dryers, Straighteners, Scissors).
+- Nails: Ola Candy, Gel Extensions.
 
-HOW TO PROVIDE LINKS (CRITICAL RULE):
-If a customer asks for a specific product (e.g., "Argan Oil Wax" or "Blue Dryer"), you MUST provide a direct buying link using this search format:
-"https://esskaybeauty.com/catalogsearch/result/?q=YOUR_SEARCH_TERM"
-(Replace YOUR_SEARCH_TERM with the product name they asked for).
+RULES FOR ANSWERING:
 
-CONSULTATION RULES (SOLUTIONS):
-1. SKIN PROBLEMS:
-   - If they say "Dry Skin": Recommend 'Naturica' or 'Skinora' hydrating products.
-   - If they say "Tan/Dullness": Recommend 'Rica Wax' or 'Casmara' brightening masks.
-   - If they say "Acne": Recommend 'Skinora' purifying kits.
-   
-2. TOOL PROBLEMS:
-   - If they want "Smooth hair": Recommend 'Mr. Barber' straighteners.
-   - If they want "Volume": Recommend 'Mr. Barber' dryers.
+1. GREETINGS: 
+   If the user says "Hi" or "Hello", ONLY say: 
+   "Hello! Welcome to Esskay Beauty. ✨ I can help you with Skincare, Haircare, or Salon Tools. What are you looking for today?"
 
-3. GENERAL BEHAVIOR:
-   - Be helpful and enthusiastic! Use emojis ✨💄.
-   - Keep answers short (under 50 words).
-   - If you don't know a solution, say: "For expert advice, please call us at +91-8882-800-800."
+2. DIRECT PRODUCT LINKS (CRITICAL):
+   If a user asks for a specific product (e.g., "Mr Barber Dryer" or "Casmara Mask"), you MUST provide a direct buying link using this search format:
+   "https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
+   (Replace SEARCH_TERM with the product name they asked for).
+
+3. HANDLING MRP / PRICE QUESTIONS:
+   - Do NOT guess the price (it might be wrong).
+   - Instead, say: "You can check the exact MRP and today's special offer directly here: [Insert Link]"
+   - Provide the search link immediately after.
+
+4. SOLUTIONS:
+   - "Dry Skin" -> Recommend Naturica or Skinora.
+   - "Tan/Glow" -> Recommend Rica Wax or Casmara.
+   - "Smooth Hair" -> Recommend Mr. Barber straighteners.
+
+5. GENERAL: 
+   - Keep answers short (under 50 words). 
+   - Use emojis! 💅💄✨
 """
 
-# Backup Models
+# Models List
 MODELS_TO_TRY = [
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
@@ -57,13 +62,11 @@ MODELS_TO_TRY = [
 
 @app.route("/webhook", methods=['GET', 'POST'])
 def webhook():
-    # 1. Verification
     if request.method == 'GET':
         if request.args.get("hub.verify_token") == META_VERIFY_TOKEN:
             return request.args.get("hub.challenge")
         return "Verification failed", 403
 
-    # 2. Handling Messages
     data = request.json
     if data.get("object") == "page":
         for entry in data.get("entry", []):
@@ -74,8 +77,8 @@ def webhook():
                     
                     print(f"Received from {sender_id}: {user_text}")
 
-                    # Combine System Prompt + User Question
-                    full_prompt = SYSTEM_PROMPT + "\n\nUser Customer asking: " + user_text
+                    # Combine Brain + User Message
+                    full_prompt = SYSTEM_PROMPT + "\n\nUser Question: " + user_text
 
                     # Smart Call
                     bot_reply = smart_gemini_call(full_prompt)
@@ -85,14 +88,16 @@ def webhook():
     return "ok", 200
 
 def smart_gemini_call(text):
-    """Tries multiple models until one works."""
+    """Tries multiple models with a small pause to fix connection errors."""
     for model_name in MODELS_TO_TRY:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {"contents": [{"parts": [{"text": text}]}]}
         
         try:
+            time.sleep(1) # Safety pause
             response = requests.post(url, headers=headers, json=payload)
+            
             if response.status_code == 200:
                 return response.json()['candidates'][0]['content']['parts'][0]['text']
             elif response.status_code == 429:
@@ -106,10 +111,8 @@ def smart_gemini_call(text):
 
 def send_to_facebook(recipient_id, text):
     if not FB_PAGE_ACCESS_TOKEN:
-        print("Token missing")
         return
 
-    # Safety truncate
     if len(text) > 1900:
         text = text[:1900] + "..."
 
