@@ -10,7 +10,7 @@ META_VERIFY_TOKEN = "my_secret_bot_123"
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
 GEMINI_API_KEY = "AIzaSyA1MjIvEE5AMxpqnfRyFWZI6-RV0sW83sk"
 
-# --- SYSTEM PROMPT (BRAIN) ---
+# --- SYSTEM PROMPT ---
 SYSTEM_PROMPT = """
 You are the 'Esskay Beauty Expert' & Sales Assistant.
 Your goal is to be helpful, professional, and drive sales to the website.
@@ -37,12 +37,13 @@ RULES FOR ANSWERING:
 5. GENERAL: Keep answers short (under 50 words). Use emojis! 💅
 """
 
-# --- NEW MODEL LIST (Using Experimental versions to bypass limits) ---
+# --- OPTIMIZED MODEL LIST (Removed blocked models) ---
+# We prioritize "Lite" and "2.5" which usually have open quotas
 MODELS_TO_TRY = [
-    "gemini-2.0-flash-exp",   # Often has fresh quota
-    "gemini-2.0-flash",       # Standard
-    "gemini-2.0-flash-lite",  # Lightweight
-    "gemini-2.5-flash"        # Newer
+    "gemini-2.0-flash-lite-preview-02-05", # Try the specific lite preview first
+    "gemini-2.5-flash",                     # Try the newest 2.5
+    "gemini-2.0-flash",                     # Standard backup
+    "gemini-2.0-flash-001"                  # Stable backup
 ]
 
 @app.route("/webhook", methods=['GET', 'POST'])
@@ -73,7 +74,7 @@ def webhook():
     return "ok", 200
 
 def smart_gemini_call(text):
-    """Tries multiple models. If all fail, prints the specific error to logs."""
+    """Tries multiple models. Logs errors if they fail."""
     
     for model_name in MODELS_TO_TRY:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
@@ -81,24 +82,23 @@ def smart_gemini_call(text):
         payload = {"contents": [{"parts": [{"text": text}]}]}
         
         try:
-            # Wait 2 seconds between tries to be polite to Google
-            time.sleep(2) 
+            # Short pause to prevent rate limiting
+            time.sleep(1) 
             response = requests.post(url, headers=headers, json=payload)
             
             if response.status_code == 200:
                 return response.json()['candidates'][0]['content']['parts'][0]['text']
             else:
-                # LOG THE ERROR so we can see it in Render
-                print(f"⚠️ Model {model_name} failed. Status: {response.status_code}. Error: {response.text}")
+                # Log the error but keep going to the next model
+                print(f"⚠️ {model_name} failed ({response.status_code}). Trying next...")
                 continue
                 
         except Exception as e:
             print(f"❌ Connection Error on {model_name}: {e}")
             continue
 
-    # If we get here, ALL models failed.
-    print("CRITICAL: All models failed. Sending fallback message.")
-    return "⚠️ High traffic! Please wait 2 minutes before asking again, or check www.esskaybeauty.com."
+    # Fallback message if ALL fail
+    return "⚠️ We are receiving high traffic! Please check www.esskaybeauty.com for prices."
 
 def send_to_facebook(recipient_id, text):
     if not FB_PAGE_ACCESS_TOKEN:
