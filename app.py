@@ -10,7 +10,7 @@ META_VERIFY_TOKEN = "my_secret_bot_123"
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
 GEMINI_API_KEY = "AIzaSyA1MjIvEE5AMxpqnfRyFWZI6-RV0sW83sk"
 
-# --- YOUR BOT'S BRAIN (SALES PRO EDITION) ---
+# --- SYSTEM PROMPT (BRAIN) ---
 SYSTEM_PROMPT = """
 You are the 'Esskay Beauty Expert' & Sales Assistant.
 Your goal is to be helpful, professional, and drive sales to the website.
@@ -20,44 +20,29 @@ BUSINESS INFO:
 - Phone: +91-8882-800-800
 - Location: Udyog Vihar Phase IV, Gurugram.
 
-BRANDS WE SELL:
-- Skin: Skinora (Professional), Casmara (Algae masks), Rica (Italian Wax), Waxxo.
-- Hair: Naturica (Natural), Keratherapy, Macadamia, GK Hair.
-- Tools: Mr. Barber (Dryers, Straighteners, Scissors).
-- Nails: Ola Candy, Gel Extensions.
-
 RULES FOR ANSWERING:
-
-1. GREETINGS: 
-   If the user says "Hi" or "Hello", ONLY say: 
+1. GREETINGS: If user says "Hi", "Hello", ONLY say: 
    "Hello! Welcome to Esskay Beauty. ✨ I can help you with Skincare, Haircare, or Salon Tools. What are you looking for today?"
 
-2. DIRECT PRODUCT LINKS (CRITICAL):
-   If a user asks for a specific product (e.g., "Mr Barber Dryer" or "Casmara Mask"), you MUST provide a direct buying link using this search format:
+2. DIRECT LINKS: If asked for a product, provide this link:
    "https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
-   (Replace SEARCH_TERM with the product name they asked for).
 
-3. HANDLING MRP / PRICE QUESTIONS:
-   - Do NOT guess the price (it might be wrong).
-   - Instead, say: "You can check the exact MRP and today's special offer directly here: [Insert Link]"
-   - Provide the search link immediately after.
+3. MRP/PRICE: Do not guess prices. Say: "Check the exact MRP and offers here: [Link]"
 
 4. SOLUTIONS:
    - "Dry Skin" -> Recommend Naturica or Skinora.
-   - "Tan/Glow" -> Recommend Rica Wax or Casmara.
-   - "Smooth Hair" -> Recommend Mr. Barber straighteners.
+   - "Tan" -> Recommend Rica Wax or Casmara.
+   - "Smooth Hair" -> Recommend Mr. Barber.
 
-5. GENERAL: 
-   - Keep answers short (under 50 words). 
-   - Use emojis! 💅💄✨
+5. GENERAL: Keep answers short (under 50 words). Use emojis! 💅
 """
 
-# Models List
+# --- NEW MODEL LIST (Using Experimental versions to bypass limits) ---
 MODELS_TO_TRY = [
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-2.5-pro"
+    "gemini-2.0-flash-exp",   # Often has fresh quota
+    "gemini-2.0-flash",       # Standard
+    "gemini-2.0-flash-lite",  # Lightweight
+    "gemini-2.5-flash"        # Newer
 ]
 
 @app.route("/webhook", methods=['GET', 'POST'])
@@ -88,29 +73,36 @@ def webhook():
     return "ok", 200
 
 def smart_gemini_call(text):
-    """Tries multiple models with a small pause to fix connection errors."""
+    """Tries multiple models. If all fail, prints the specific error to logs."""
+    
     for model_name in MODELS_TO_TRY:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {"contents": [{"parts": [{"text": text}]}]}
         
         try:
-            time.sleep(1) # Safety pause
+            # Wait 2 seconds between tries to be polite to Google
+            time.sleep(2) 
             response = requests.post(url, headers=headers, json=payload)
             
             if response.status_code == 200:
                 return response.json()['candidates'][0]['content']['parts'][0]['text']
-            elif response.status_code == 429:
-                continue
             else:
+                # LOG THE ERROR so we can see it in Render
+                print(f"⚠️ Model {model_name} failed. Status: {response.status_code}. Error: {response.text}")
                 continue
-        except Exception:
+                
+        except Exception as e:
+            print(f"❌ Connection Error on {model_name}: {e}")
             continue
 
-    return "⚠️ I'm checking the inventory! Please wait a moment or check www.esskaybeauty.com."
+    # If we get here, ALL models failed.
+    print("CRITICAL: All models failed. Sending fallback message.")
+    return "⚠️ High traffic! Please wait 2 minutes before asking again, or check www.esskaybeauty.com."
 
 def send_to_facebook(recipient_id, text):
     if not FB_PAGE_ACCESS_TOKEN:
+        print("Error: Token missing")
         return
 
     if len(text) > 1900:
