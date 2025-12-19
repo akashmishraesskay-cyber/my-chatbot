@@ -8,8 +8,8 @@ app = Flask(__name__)
 # --- CONFIGURATION ---
 # We read these securely from Render Settings
 META_VERIFY_TOKEN = "my_secret_bot_123"
-FB_PAGE_ACCESS_TOKEN = os.environ.get("EAALv2CuWN1IBQIp2ITbDqeTa8VcU9acJo0xAmd75VqqZAx6IFsuvZB28ABVgqok6K7lcZCaSKlZAYKnV9jKZAdt4uk1agFZBqmznNCDZAeNYVarZBXrD1K6MUE6U2PJs15YuLZBPnft7lMynZCXj0DYPpQoqK4OiV5CtmTtjIXSe0k7Rn0TwMnXVsxngQlpd10hykO27rNzuQh")
-GEMINI_API_KEY = os.environ.get("AIzaSyAKrZ4UUVbUSYZTvQ8BW44MmV4ApHYJQBs")
+FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # --- YOUR BOT'S BRAIN (SALES EXPERT) ---
 SYSTEM_PROMPT = """
