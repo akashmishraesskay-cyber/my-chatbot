@@ -37,7 +37,7 @@ def webhook():
 
 def call_gemini_direct(text):
     """Talks to Gemini directly via URL."""
-    # !!! FIX IS HERE: Switched to 'gemini-pro' which is compatible with your key !!!
+    # !!! I CHANGED THIS LINE BELOW TO 'gemini-pro' !!!
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
     
     headers = {"Content-Type": "application/json"}
