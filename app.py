@@ -7,7 +7,8 @@ app = Flask(__name__)
 
 # --- CONFIGURATION (Use Environment Variables for Security) ---
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
-META_VERIFY_TOKEN = "my_secret_token_123" # You invent this string
+# Force the token to match what you typed in Facebook
+META_VERIFY_TOKEN = "my_secret_bot_123"
 GENAI_API_KEY = os.environ.get("GENAI_API_KEY")
 
 # Setup Gemini
@@ -44,4 +45,5 @@ def send_message(recipient_id, text):
     requests.post(url, json=payload)
 
 if __name__ == "__main__":
+
     app.run(port=5000)
