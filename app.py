@@ -8,7 +8,7 @@ app = Flask(__name__)
 META_VERIFY_TOKEN = "my_secret_bot_123"
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
 
-# PASTE YOUR API KEY HERE
+# YOUR API KEY
 GEMINI_API_KEY = "AIzaSyA1MjIvEE5AMxpqnfRyFWZI6-RV0sW83sk"
 
 @app.route("/webhook", methods=['GET', 'POST'])
@@ -28,7 +28,7 @@ def webhook():
                     sender_id = event["sender"]["id"]
                     user_text = event["message"]["text"]
                     
-                    # Call Gemini using DIRECT method (No library)
+                    # Call Gemini using DIRECT method
                     bot_reply = call_gemini_direct(user_text)
                     
                     # Send reply to Facebook
@@ -36,8 +36,10 @@ def webhook():
     return "ok", 200
 
 def call_gemini_direct(text):
-    """Talks to Gemini directly via URL, bypassing the Python library issues."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    """Talks to Gemini directly via URL."""
+    # !!! FIX IS HERE: Switched to 'gemini-pro' which is compatible with your key !!!
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
+    
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{
@@ -50,8 +52,7 @@ def call_gemini_direct(text):
         if response.status_code == 200:
             return response.json()['candidates'][0]['content']['parts'][0]['text']
         else:
-            # If Flash fails, try the older Pro model automatically
-            return f"Error: {response.text} (Status: {response.status_code})"
+            return f"Error from Google: {response.text} (Status: {response.status_code})"
     except Exception as e:
         return f"Connection Failed: {str(e)}"
 
