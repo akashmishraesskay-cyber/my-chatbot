@@ -9,7 +9,7 @@ app = Flask(__name__)
 META_VERIFY_TOKEN = "my_secret_bot_123"
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
 
-# --- CLEAN KEY ---
+# --- AUTO-CLEAN KEY ---
 raw_key = os.environ.get("GEMINI_API_KEY")
 if raw_key:
     GEMINI_API_KEY = raw_key.strip()
@@ -18,41 +18,32 @@ else:
 
 # --- PRODUCT DATA ---
 PRODUCT_DATA = """
-TOP SELLING PRODUCTS (Prices):
-1. Rica White Chocolate Wax (800ml): MRP ₹1,350 -> Offer ₹1,249
-2. Casmara Algae Peel-Off Mask: MRP ₹1,800 - ₹1,900
-3. Mr. Barber Straits Xtreme: MRP ₹3,900 -> Offer ₹2,730
-4. Mr. Barber Airmax Dryer: MRP ₹4,500 -> Offer ₹3,150
-5. Waxxo Wax Heater: MRP ₹2,400 -> Offer ₹1,920
+TOP SELLING PRODUCTS & PRICES:
+1. Rica White Chocolate Wax (800ml): Offer ₹1,249
+2. Casmara Algae Peel-Off Mask: ₹1,800 - ₹1,900
+3. Mr. Barber Straits Xtreme Straightener: Offer ₹2,730
+4. Mr. Barber Airmax Dryer: Offer ₹3,150
+5. Waxxo Wax Heater: Offer ₹1,920
 """
 
-# --- SMART BRAIN ---
+# --- BRAIN ---
 SYSTEM_PROMPT = f"""
 You are the 'Esskay Beauty Expert'.
-Your goal is to be helpful and behave like a human sales assistant.
-
 {PRODUCT_DATA}
 
-CRITICAL RULES:
-1. IF USER CHATS (e.g., "Hi", "How are you", "Good Morning"):
-   - Reply politely and professionally.
-   - Do NOT generate a website link.
-   - Example: "I'm doing great! Ready to help you find the best salon products."
-
-2. IF USER ASKS FOR A PRODUCT (e.g., "Price of dryer", "I need wax", "Shampoo"):
-   - Check the list above for specific prices if applicable.
-   - YOU MUST PROVIDE A LINK in this format:
-   - "https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
-   - (Replace SEARCH_TERM with the product name).
-
-3. GENERAL: Keep it short (under 50 words). Use emojis 🛍️.
+RULES:
+1. IF USER CHATS ("Hi", "How are you"): Reply politely. NO LINK.
+2. IF USER ASKS PRODUCT ("Price of dryer", "wax"): 
+   - You MUST provide a link: "https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
+3. GENERAL: Keep it short (max 2 sentences). Use emojis 🛍️.
 """
 
-# --- STABLE MODEL LIST ---
-# We prioritize gemini-2.0-flash because it is faster and more stable for you
+# --- MODEL LIST (Optimized for Free Tier) ---
+# We use 'gemini-2.0-flash-lite' first because it allows MORE messages per minute.
 MODELS_TO_TRY = [
-    "gemini-2.0-flash",
-    "gemini-2.5-flash"
+    "gemini-2.0-flash-lite-preview-02-05", # Fastest / Cheapest
+    "gemini-2.0-flash",                     # Standard Backup
+    "gemini-2.5-flash"                      # Powerful Backup
 ]
 
 @app.route("/webhook", methods=['GET', 'POST'])
@@ -72,7 +63,7 @@ def webhook():
                     
                     print(f"Received: {user_text}")
                     
-                    # Smart Call
+                    # Smart Call with 'Patient Retry'
                     bot_reply = smart_gemini_call(SYSTEM_PROMPT + "\n\nUser: " + user_text)
                     send_reply(sender_id, bot_reply)
     return "ok", 200
@@ -85,26 +76,32 @@ def smart_gemini_call(text):
         headers = {"Content-Type": "application/json"}
         payload = {"contents": [{"parts": [{"text": text}]}]}
         
-        try:
-            # 2-second pause to prevent "High Traffic" speed blocks
-            time.sleep(2) 
-            response = requests.post(url, headers=headers, json=payload)
-            
-            if response.status_code == 200:
-                return response.json()['candidates'][0]['content']['parts'][0]['text']
-            elif response.status_code == 429:
-                # If speed limited, wait 5 seconds and retry the same model
-                time.sleep(5)
-                continue 
-            else:
-                print(f"⚠️ {model_name} failed ({response.status_code}). Switching...")
-                continue
+        # Try up to 3 times per model
+        for attempt in range(3):
+            try:
+                response = requests.post(url, headers=headers, json=payload)
                 
-        except Exception as e:
-            print(f"Connection Error: {e}")
-            continue
+                if response.status_code == 200:
+                    return response.json()['candidates'][0]['content']['parts'][0]['text']
+                
+                elif response.status_code == 429:
+                    # RATE LIMIT HIT! The bot will pause and retry.
+                    wait_time = (attempt + 1) * 5  # Wait 5s, then 10s, then 15s
+                    print(f"⚠️ High Traffic. Pausing for {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue 
+                
+                else:
+                    # If it's a real error (not traffic), switch model
+                    print(f"⚠️ {model_name} error {response.status_code}. Switching...")
+                    break 
+                    
+            except Exception as e:
+                print(f"Connection Error: {e}")
+                time.sleep(2)
+                continue
 
-    return "⚠️ High traffic! Please wait 1 minute before asking again."
+    return "⚠️ We are receiving very high traffic! Please try again in 1 minute."
 
 def send_reply(recipient_id, text):
     if not FB_PAGE_ACCESS_TOKEN: return
