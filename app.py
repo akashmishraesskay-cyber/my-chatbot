@@ -16,34 +16,6 @@ if raw_key:
 else:
     GEMINI_API_KEY = None
 
-# --- BRAIN (UPDATED LOGIC) ---
-SYSTEM_PROMPT = """
-You are the 'Esskay Beauty Expert'.
-Your goal is to be helpful and drive sales, but behave like a human.
-
-RULES FOR BEHAVIOR:
-1. IF THE USER CHATS (e.g., "Hi", "How are you", "Good morning"):
-   - Do NOT provide a link.
-   - Just reply politely. (e.g., "I'm doing great! Ready to help you find the best salon products. ✨")
-
-2. IF THE USER ASKS FOR A PRODUCT (e.g., "Price of dryer", "I need wax", "Shampoo"):
-   - You MUST provide a search link using this EXACT format:
-   - "https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
-   - (Replace SEARCH_TERM with the product keywords).
-   - Example response: "We have great options! Check the latest prices here: [Link]"
-
-3. GENERAL:
-   - Keep answers short (under 50 words).
-   - Use emojis! 💅🛍️
-"""
-
-# --- MODEL LIST (Prioritizing Stability) ---
-# We use 1.5-flash first because it has the highest rate limits (less "High Traffic" errors)
-MODELS_TO_TRY = [
-    "gemini-1.5-flash", 
-    "gemini-2.0-flash"
-]
-
 @app.route("/webhook", methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
@@ -52,7 +24,6 @@ def webhook():
         return "Verification failed", 403
 
     data = request.json
-    # Listen to both Facebook (page) and Instagram
     if data.get("object") == "page" or data.get("object") == "instagram":
         for entry in data.get("entry", []):
             for event in entry.get("messaging", []):
@@ -60,45 +31,34 @@ def webhook():
                     sender_id = event["sender"]["id"]
                     user_text = event["message"]["text"]
                     
-                    print(f"Received: {user_text}")
-                    
-                    # AI Call
-                    bot_reply = smart_gemini_call(SYSTEM_PROMPT + "\n\nUser: " + user_text)
-                    send_reply(sender_id, bot_reply)
+                    # Call the diagnostic function
+                    reply = test_connection(user_text)
+                    send_reply(sender_id, reply)
     return "ok", 200
 
-def smart_gemini_call(text):
+def test_connection(text):
     if not GEMINI_API_KEY:
-        return "⚠️ Error: API Key missing in Render."
+        return "❌ SETUP ERROR: GEMINI_API_KEY is missing in Render."
 
-    for model_name in MODELS_TO_TRY:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-        headers = {"Content-Type": "application/json"}
-        payload = {"contents": [{"parts": [{"text": text}]}]}
+    # We try the standard model. If this fails, the account is dead.
+    model_name = "gemini-1.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+    headers = {"Content-Type": "application/json"}
+    payload = {"contents": [{"parts": [{"text": "Reply short: " + text}]}]}
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
         
-        try:
-            # 2-second pause to prevent speed blocks (Crucial for fixing your issue)
-            time.sleep(2) 
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            # THIS IS THE IMPORTANT PART:
+            # It will send the exact error from Google to your chat.
+            error_msg = response.json().get('error', {}).get('message', 'Unknown Error')
+            return f"⚠️ GOOGLE BLOCK ({response.status_code}):\n{error_msg}"
             
-            response = requests.post(url, headers=headers, json=payload)
-            
-            if response.status_code == 200:
-                return response.json()['candidates'][0]['content']['parts'][0]['text']
-            elif response.status_code == 429:
-                print(f"⚠️ Rate Limit on {model_name}. Switching...")
-                continue # Try next model
-            elif response.status_code == 403:
-                return "❌ Key Error: Your API Key is invalid. Please generate a new one."
-            else:
-                print(f"⚠️ Error {response.status_code} on {model_name}")
-                continue
-                
-        except Exception as e:
-            print(f"Connection Error: {e}")
-            continue
-
-    # If all models are busy
-    return "⚠️ High traffic! Please wait 1 minute before asking again."
+    except Exception as e:
+        return f"❌ CRASH: {str(e)}"
 
 def send_reply(recipient_id, text):
     if not FB_PAGE_ACCESS_TOKEN: return
