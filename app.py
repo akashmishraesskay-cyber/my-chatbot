@@ -9,35 +9,39 @@ app = Flask(__name__)
 META_VERIFY_TOKEN = "my_secret_bot_123"
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
 
-# --- CLEAN KEY ---
+# --- AUTO-CLEAN KEY ---
 raw_key = os.environ.get("GEMINI_API_KEY")
 if raw_key:
     GEMINI_API_KEY = raw_key.strip()
 else:
     GEMINI_API_KEY = None
 
-# --- PRODUCT DATA ---
+# --- PRODUCT DATA (Hardcoded for speed) ---
 PRODUCT_DATA = """
-TOP SELLING PRODUCTS (Prices):
-1. Rica White Chocolate Wax (800ml): Offer ₹1,249
+TOP SELLING PRODUCTS (Offer Prices):
+1. Rica White Chocolate Wax (800ml): ₹1,249
 2. Casmara Algae Peel-Off Mask: ₹1,800 - ₹1,900
-3. Mr. Barber Straits Xtreme Straightener: Offer ₹2,730
-4. Mr. Barber Airmax Dryer: Offer ₹3,150
-5. Waxxo Wax Heater: Offer ₹1,920
+3. Mr. Barber Straits Xtreme Straightener: ₹2,730
+4. Mr. Barber Airmax Dryer: ₹3,150
+5. Waxxo Wax Heater: ₹1,920
 """
 
+# --- BRAIN ---
 SYSTEM_PROMPT = f"""
 You are the 'Esskay Beauty Expert'.
 {PRODUCT_DATA}
 
 RULES:
-1. CHATTING: If user says "Hi", "How are you", reply politely. NO LINK.
-2. SELLING: If user asks for a product/price, you MUST provide this link:
-   "https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
-3. GENERAL: Keep it short (max 1 sentence). Use emojis 🛍️.
+1. IGNORE YOURSELF: If the input looks like a bot reply, do nothing.
+2. CHATTING: If user says "Hi", "Hello", reply: "Hello! How can I help you with our salon products today? 🛍️"
+3. EXACT PRODUCT: If user asks for a specific product (e.g. "Price of Autograph Pro"), reply with:
+   "You can find the details and best price here: https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
+   (Replace SEARCH_TERM with the product name).
+4. VAGUE QUESTIONS: If user just says "Tell me the price" or "Price please" WITHOUT naming a product, ASK THEM: "Which product are you looking for?"
+5. GENERAL: Keep it short.
 """
 
-# Use the Lite model first (Fastest)
+# --- FAST MODEL LIST ---
 MODELS_TO_TRY = [
     "gemini-2.0-flash-lite-preview-02-05", 
     "gemini-2.0-flash",
@@ -52,16 +56,24 @@ def webhook():
         return "Verification failed", 403
 
     data = request.json
+    # Handle Facebook Page & Instagram events
     if data.get("object") == "page" or data.get("object") == "instagram":
         for entry in data.get("entry", []):
             for event in entry.get("messaging", []):
+                
+                # --- CRITICAL FIX: IGNORE "ECHO" MESSAGES ---
+                # This stops the bot from replying to itself
+                if event.get("message", {}).get("is_echo"):
+                    print("Ignoring Bot Echo")
+                    continue
+
                 if "message" in event and "text" in event["message"]:
                     sender_id = event["sender"]["id"]
                     user_text = event["message"]["text"]
                     
-                    print(f"Received: {user_text}")
+                    print(f"Received from User: {user_text}")
                     
-                    # Call AI
+                    # Smart AI Call
                     bot_reply = smart_gemini_call(SYSTEM_PROMPT + "\n\nUser: " + user_text)
                     send_reply(sender_id, bot_reply)
     return "ok", 200
@@ -75,25 +87,24 @@ def smart_gemini_call(text):
         payload = {"contents": [{"parts": [{"text": text}]}]}
         
         try:
-            # FAST RETRY: Only wait 1 second, not 10
-            time.sleep(1) 
-            response = requests.post(url, headers=headers, json=payload, timeout=8) # Force timeout at 8s
+            # Short timeout to keep Facebook happy
+            response = requests.post(url, headers=headers, json=payload, timeout=8)
             
             if response.status_code == 200:
                 return response.json()['candidates'][0]['content']['parts'][0]['text']
             elif response.status_code == 429:
-                print(f"⚠️ Limit hit on {model_name}. Trying next model...")
-                continue 
+                print(f"⚠️ High Traffic on {model_name}. Switching...")
+                continue
             else:
                 print(f"⚠️ Error {response.status_code}. Switching...")
                 continue
                 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Connection Error: {e}")
             continue
 
-    # If all fail, give a generic helpful link instead of crashing
-    return "I'm checking that for you! Please view our full catalog here: https://esskaybeauty.com/"
+    # Fallback if Google is totally dead
+    return "I'm checking that! Please browse here: https://esskaybeauty.com/"
 
 def send_reply(recipient_id, text):
     if not FB_PAGE_ACCESS_TOKEN: return
