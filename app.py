@@ -16,29 +16,62 @@ if raw_key:
 else:
     GEMINI_API_KEY = None
 
-# --- PRODUCT DATA (Hardcoded for speed) ---
-PRODUCT_DATA = """
-TOP SELLING PRODUCTS (Offer Prices):
-1. Rica White Chocolate Wax (800ml): ₹1,249
-2. Casmara Algae Peel-Off Mask: ₹1,800 - ₹1,900
-3. Mr. Barber Straits Xtreme Straightener: ₹2,730
-4. Mr. Barber Airmax Dryer: ₹3,150
-5. Waxxo Wax Heater: ₹1,920
+# --- MASSIVE PRODUCT DATABASE (Editable) ---
+# I have added the exact prices found on your website.
+KNOWLEDGE_BASE = """
+TOP SELLING PRODUCTS & EXACT PRICES:
+
+--- MR. BARBER (Electronics) ---
+1. Mr. Barber Autograph Pro Dryer: Offer ₹20,690 (MRP ₹22,990)
+2. Mr. Barber Airmax Dryer (2400W): Offer ₹3,150 (MRP ₹4,500)
+3. Mr. Barber Straits Xtreme Straightener: Offer ₹2,730 (MRP ₹3,900)
+4. Mr. Barber Infinity Pro Dryer (2000W): Offer ₹6,993 (MRP ₹9,990)
+5. Mr. Barber Ultra Straits Pro Straightener: Offer ₹4,060 (MRP ₹5,800)
+6. Mr. Barber Curler (4-in-1 Tong): Offer ₹6,650 (MRP ₹9,500)
+
+--- RICA (Waxing) ---
+7. Rica White Chocolate Wax (800ml): Offer ₹1,249 (MRP ₹1,350)
+8. Rica Brazilian Beads (Stripless): Offer ₹1,615 (MRP ₹1,900)
+9. Rica Aloe Vera Wax (800ml): Offer ₹1,256 (MRP ₹1,350)
+10. Rica Dark Chocolate Wax (800ml): Offer ₹1,256 (MRP ₹1,350)
+11. Rica Roll-On Wax (Refill): Offer ₹295 (MRP ₹310)
+
+--- CASMARA (Skincare) ---
+12. Casmara Algae Peel-Off Mask (Green/Gold): ₹1,800 - ₹1,900
+13. Casmara Urban Protect DD Cream (Sunscreen): ₹3,300
+14. Casmara Photoaging Control Gel Cream SPF 50+: ₹3,200
+15. Casmara Hydra Lifting Cream: ₹2,990
+16. Casmara Balance Cleanser (150ml): ₹1,950
+
+--- SKINORA (Skincare) ---
+17. Skinora Sunscreen SPF 50: Offer ₹656 (MRP ₹690)
+18. Skinora Detan Mask (500g): Offer ₹1,520 (MRP ₹1,600)
+19. Skinora Vitamin C Serum: Offer ₹941 (MRP ₹990)
+20. Skinora Hyaluronic Hydra Cream: Offer ₹751 (MRP ₹790)
+
+--- WAXXO (Heaters) ---
+21. Waxxo Single Wax Heater: Offer ₹1,920 (MRP ₹2,400)
+22. Waxxo Double Wax Heater: Offer ₹5,440 (MRP ₹6,800)
+23. Waxxo White Chocolate Wax (800ml): Offer ₹1,080 (MRP ₹1,350)
+
+--- OTHER INFO ---
+24. COURSES: Esskay Academy offers hair/beauty courses with job placement. Link: https://esskaygroup.org/esskay-academy/
+25. CAREERS: Hiring for Sales/Education. Email: hr@esskaybeauty.com. Link: https://esskaygroup.org/careers/
 """
 
 # --- BRAIN ---
 SYSTEM_PROMPT = f"""
 You are the 'Esskay Beauty Expert'.
-{PRODUCT_DATA}
+{KNOWLEDGE_BASE}
 
 RULES:
-1. IGNORE YOURSELF: If the input looks like a bot reply, do nothing.
-2. CHATTING: If user says "Hi", "Hello", reply: "Hello! How can I help you with our salon products today? 🛍️"
-3. EXACT PRODUCT: If user asks for a specific product (e.g. "Price of Autograph Pro"), reply with:
-   "You can find the details and best price here: https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
-   (Replace SEARCH_TERM with the product name).
-4. VAGUE QUESTIONS: If user just says "Tell me the price" or "Price please" WITHOUT naming a product, ASK THEM: "Which product are you looking for?"
-5. GENERAL: Keep it short.
+1. IGNORE ECHOES: If the message looks like a bot reply, ignore it.
+2. CHATTING: If user says "Hi", "Hello", reply: "Hello! Welcome to Esskay Beauty. ✨ How can I help you today?"
+3. EXACT PRODUCT: 
+   - Check the list above first. If found, say: "The price for [Product] is [Price]. Buy here: https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
+   - If NOT in the list, use the Smart Link: "Check the latest price here: https://esskaybeauty.com/catalogsearch/result/?q=SEARCH_TERM"
+   - (Replace SEARCH_TERM with the specific product name, e.g. "Rica+Wax").
+4. GENERAL: Keep it short. Use emojis 🛍️.
 """
 
 # --- FAST MODEL LIST ---
@@ -56,22 +89,19 @@ def webhook():
         return "Verification failed", 403
 
     data = request.json
-    # Handle Facebook Page & Instagram events
     if data.get("object") == "page" or data.get("object") == "instagram":
         for entry in data.get("entry", []):
             for event in entry.get("messaging", []):
                 
-                # --- CRITICAL FIX: IGNORE "ECHO" MESSAGES ---
-                # This stops the bot from replying to itself
+                # 🛑 IGNORE ECHOES 🛑
                 if event.get("message", {}).get("is_echo"):
-                    print("Ignoring Bot Echo")
                     continue
 
                 if "message" in event and "text" in event["message"]:
                     sender_id = event["sender"]["id"]
                     user_text = event["message"]["text"]
                     
-                    print(f"Received from User: {user_text}")
+                    print(f"Received: {user_text}")
                     
                     # Smart AI Call
                     bot_reply = smart_gemini_call(SYSTEM_PROMPT + "\n\nUser: " + user_text)
@@ -87,24 +117,21 @@ def smart_gemini_call(text):
         payload = {"contents": [{"parts": [{"text": text}]}]}
         
         try:
-            # Short timeout to keep Facebook happy
+            # 8s timeout for speed
             response = requests.post(url, headers=headers, json=payload, timeout=8)
             
             if response.status_code == 200:
                 return response.json()['candidates'][0]['content']['parts'][0]['text']
             elif response.status_code == 429:
-                print(f"⚠️ High Traffic on {model_name}. Switching...")
+                time.sleep(1) 
                 continue
             else:
-                print(f"⚠️ Error {response.status_code}. Switching...")
                 continue
                 
-        except Exception as e:
-            print(f"Connection Error: {e}")
+        except Exception:
             continue
 
-    # Fallback if Google is totally dead
-    return "I'm checking that! Please browse here: https://esskaybeauty.com/"
+    return "Please browse our full catalog here: https://esskaybeauty.com/"
 
 def send_reply(recipient_id, text):
     if not FB_PAGE_ACCESS_TOKEN: return
